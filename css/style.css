@@ -10,6 +10,7 @@
   --finished: #1f9d55;
   --chip: #ececee;
   --yt-track: #909090;
+  --link: #065fd4;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   color-scheme: light;
 }
@@ -23,6 +24,7 @@
     --accent: #ff4e45;
     --chip: #2a2b2e;
     --yt-track: #717171;
+    --link: #3ea6ff;
     --shadow: none;
     color-scheme: dark;
   }
@@ -108,7 +110,10 @@ textarea { width: 100%; font: 13px/1.4 ui-monospace, Consolas, monospace; color:
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column; }
 .thumb { position: relative; display: block; aspect-ratio: 16 / 9; background: var(--chip); }
 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.card.finished .thumb img { opacity: 0.55; }
+.card.finished .thumb img { opacity: 0.35; filter: grayscale(0.8); }
+/* Fade the rest of a watched card too, but restore it on hover so it's still easy to read and act on. */
+.card.finished .body { opacity: 0.55; transition: opacity 0.15s; }
+.card.finished:hover .body { opacity: 1; }
 .badge { position: absolute; right: 6px; bottom: 8px; background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 12px; font-weight: 600; padding: 1px 4px; border-radius: 4px; }
 .badge.left { left: 6px; right: auto; top: 6px; bottom: auto; }
 .badge.finished { background: var(--finished); }
@@ -156,7 +161,8 @@ code { background: var(--chip); padding: 1px 5px; border-radius: 4px; }
 .watch h1 { font-size: 20px; margin: 14px 0 4px; }
 .watch .meta { color: var(--muted); }
 .watch .actions { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; align-items: center; }
-.watch .desc { white-space: pre-wrap; color: var(--muted); background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+.watch .desc { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+.watch .desc a { color: var(--link); }
 
 @media (max-width: 800px) {
   .layout { grid-template-columns: 1fr; padding: 12px; }

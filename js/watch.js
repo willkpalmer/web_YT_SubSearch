@@ -1,6 +1,6 @@
 // Plays a video with the YouTube IFrame player and records how far you got.
 import * as store from './store.js';
-import { formatAge, formatCount, formatDuration, youtubeUrl, isFinished, statusOf, positionOf } from './common.js';
+import { el, formatAge, formatCount, formatDuration, youtubeUrl, isFinished, statusOf, positionOf } from './common.js';
 
 const $ = (id) => document.getElementById(id);
 const videoId = new URLSearchParams(location.search).get('v');
@@ -70,6 +70,39 @@ function createPlayer() {
   });
 }
 
+// Turn URLs in the description into links (opened in a new tab) and timestamps
+// like 1:23 or 1:02:03 into links that jump the player to that point.
+function linkify(text) {
+  const re = /\b(?:https?:\/\/|www\.)[^\s<>"]+|\b(?:\d{1,2}:)?\d{1,2}:\d{2}\b/gi;
+  const out = [];
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    let token = m[0];
+    if (/^(https?:|www\.)/i.test(token)) {
+      // Leave trailing punctuation (and an unmatched closing bracket) out of the link.
+      token = token.replace(/[.,;:!?'"]+$/, '');
+      if (token.endsWith(')') && !token.includes('(')) token = token.slice(0, -1);
+      const href = /^www\./i.test(token) ? `https://${token}` : token;
+      out.push(text.slice(last, m.index), el('a', { href, target: '_blank', rel: 'noopener' }, token));
+    } else {
+      const secs = token.split(':').reduce((acc, n) => acc * 60 + Number(n), 0);
+      out.push(text.slice(last, m.index), el('a', {
+        href: youtubeUrl(videoId, secs),
+        onclick: (e) => {
+          if (!player?.seekTo) return; // Player not ready: fall back to the YouTube link.
+          e.preventDefault();
+          player.seekTo(secs, true);
+          player.playVideo?.();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        },
+      }, token));
+    }
+    last = m.index + token.length;
+  }
+  out.push(text.slice(last));
+  return out;
+}
+
 async function init() {
   if (!videoId) {
     $('title').textContent = 'No video selected';
@@ -82,7 +115,7 @@ async function init() {
     $('meta').textContent = `${video.channelTitle} · ${formatCount(video.views)} views · ${formatAge(video.publishedAt)} · ${formatDuration(video.duration)}`;
     if (video.description) {
       $('desc').hidden = false;
-      $('desc').textContent = video.description + (video.description.length >= 500 ? '…' : '');
+      $('desc').replaceChildren(...linkify(video.description), video.description.length >= 500 ? '…' : '');
     }
   }
   refreshUi();
