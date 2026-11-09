@@ -305,6 +305,13 @@ window.addEventListener('focus', async () => {
   window.scrollTo(0, scroll);
 });
 
+// The sticky banner/sort row sits just under the top bar, whose height varies
+// (e.g. no Sync button on a channel page, or wrapping on narrow windows).
+const topbar = document.querySelector('.topbar');
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty('--topbar-h', `${topbar.offsetHeight}px`);
+}).observe(topbar);
+
 writeFilters(loadSavedFilters());
 updateSyncStatus();
 if (pageChannelId) {
