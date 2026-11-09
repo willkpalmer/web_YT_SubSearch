@@ -128,7 +128,7 @@ function renderMore() {
   $('more').hidden = shown >= filtered.length;
   const allBtn = $('showAllBtn');
   if (allBtn) {
-    allBtn.hidden = shown >= filtered.length;
+    allBtn.disabled = shown >= filtered.length; // Greyed out rather than hidden, so the other buttons don't move.
     allBtn.textContent = `Show all ${filtered.length.toLocaleString()} videos`;
   }
 
@@ -257,7 +257,7 @@ function renderBanner(count) {
         `${count} video${count === 1 ? '' : 's'} \u00b7 ${c.lastSync ? `synced ${formatAge(c.lastSync)}` : 'not synced yet'}`)),
     el('div', { class: 'actions' },
       el('button', { class: 'btn primary', id: 'channelSyncBtn', onclick: () => runChannelSync(c) }, 'Sync this channel'),
-      el('button', { class: 'btn', id: 'showAllBtn', hidden: true, title: 'Load every matching video instead of clicking Show more repeatedly', onclick: () => { showAll = true; renderMore(); } }, 'Show all videos'),
+      el('button', { class: 'btn', id: 'showAllBtn', disabled: true, title: 'Load every matching video instead of clicking Show more repeatedly', onclick: () => { showAll = true; renderMore(); } }, 'Show all videos'),
       el('a', { class: 'btn', href: `https://www.youtube.com/channel/${c.id}/videos`, target: '_blank', rel: 'noopener', title: 'Open on YouTube, e.g. to grab your progress with the bookmark from Settings' }, 'Channel on YouTube \u2197'),
       el('a', { class: 'btn', href: 'channels.html' }, '\u2190 All channels')),
   ].filter(Boolean));
