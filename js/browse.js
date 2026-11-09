@@ -16,6 +16,8 @@ let channels = [];
 let progress = new Map();
 let filtered = [];
 let shown = 0;
+// Single-channel view: once "Show all" is clicked, keep rendering every match (also after filter changes).
+let showAll = false;
 
 // ---- Filter state ----
 
@@ -106,7 +108,7 @@ function applyFilters() {
 
 function renderMore() {
   const grid = $('grid');
-  const next = filtered.slice(shown, shown + PAGE_SIZE);
+  const next = filtered.slice(shown, showAll ? filtered.length : shown + PAGE_SIZE);
   grid.append(...next.map(card));
   shown += next.length;
 
@@ -124,6 +126,11 @@ function renderMore() {
       + `${started.toLocaleString()} in progress \u00b7 ${finished.toLocaleString()} finished`
     : '';
   $('more').hidden = shown >= filtered.length;
+  const allBtn = $('showAllBtn');
+  if (allBtn) {
+    allBtn.hidden = shown >= filtered.length;
+    allBtn.textContent = `Show all ${filtered.length.toLocaleString()} videos`;
+  }
 
   if (!filtered.length) {
     grid.append(el('div', { class: 'empty', style: 'grid-column: 1 / -1' },
@@ -250,6 +257,7 @@ function renderBanner(count) {
         `${count} video${count === 1 ? '' : 's'} \u00b7 ${c.lastSync ? `synced ${formatAge(c.lastSync)}` : 'not synced yet'}`)),
     el('div', { class: 'actions' },
       el('button', { class: 'btn primary', id: 'channelSyncBtn', onclick: () => runChannelSync(c) }, 'Sync this channel'),
+      el('button', { class: 'btn', id: 'showAllBtn', hidden: true, title: 'Load every matching video instead of clicking Show more repeatedly', onclick: () => { showAll = true; renderMore(); } }, 'Show all videos'),
       el('a', { class: 'btn', href: `https://www.youtube.com/channel/${c.id}/videos`, target: '_blank', rel: 'noopener', title: 'Open on YouTube, e.g. to grab your progress with the bookmark from Settings' }, 'Channel on YouTube \u2197'),
       el('a', { class: 'btn', href: 'channels.html' }, '\u2190 All channels')),
   ].filter(Boolean));
