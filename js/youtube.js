@@ -228,10 +228,11 @@ export async function syncAll(onProgress = () => {}) {
   return { total, errors };
 }
 
-export async function addChannels(ids) {
+// `extra` is stored on each new channel, e.g. { manual: true } for pasted ones.
+export async function addChannels(ids, extra = {}) {
   const existing = new Set((await store.getAll('channels')).map((c) => c.id));
   const fresh = ids.filter((id) => !existing.has(id));
   const channels = await fetchChannels(fresh);
-  await store.putMany('channels', channels.map((c) => ({ ...c, enabled: true, lastSync: 0 })));
+  await store.putMany('channels', channels.map((c) => ({ ...c, enabled: true, lastSync: 0, ...extra })));
   return channels.length;
 }

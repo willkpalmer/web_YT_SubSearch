@@ -46,19 +46,36 @@ $('saveKey').addEventListener('click', () => guard('keyMsg', async () => {
 
 // ---- 2. Import ----
 
-async function importIds(ids, source) {
+// `full` means `ids` is your complete subscription list, so channels missing from it
+// are ones you've unsubscribed from. Pasted channels (Option B) are never removed this way.
+async function importIds(ids, source, { full = false } = {}) {
   needKey();
   if (!ids.length) throw new Error(`No channels found in ${source}.`);
   msg('importMsg', `Looking up ${ids.length} channels…`);
-  const added = await yt.addChannels(ids);
-  msg('importMsg', `Found ${ids.length} channels in ${source}; ${added} new added. Now click "Sync all channels now" below.`, 'ok');
+  const added = await yt.addChannels(ids, full ? {} : { manual: true });
+  let removed = 0;
+  if (full) {
+    const keep = new Set(ids);
+    const stale = (await store.getAll('channels'))
+      .filter((c) => !keep.has(c.id) && !c.manual)
+      .sort((a, b) => a.title.localeCompare(b.title));
+    if (stale.length && confirm(
+      `You're no longer subscribed to ${stale.length} channel${stale.length === 1 ? '' : 's'} in this app:\n\n`
+      + `${stale.map((c) => `• ${c.title}`).join('\n')}\n\n`
+      + 'Remove them and their videos? Your watch progress is kept.')) {
+      for (const c of stale) await store.removeChannel(c.id);
+      removed = stale.length;
+    }
+  }
+  msg('importMsg', `Found ${ids.length} channels in ${source}; ${added} new added`
+    + `${removed ? `, ${removed} unsubscribed removed` : ''}. Now click "Sync all channels now" below.`, 'ok');
   await renderChannels();
 }
 
 $('csvFile').addEventListener('change', (e) => guard('importMsg', async () => {
   const file = e.target.files[0];
   if (!file) return;
-  await importIds(yt.parseSubscriptionsCsv(await file.text()), file.name);
+  await importIds(yt.parseSubscriptionsCsv(await file.text()), file.name, { full: true });
   e.target.value = '';
 }));
 
@@ -81,7 +98,7 @@ $('publicBtn').addEventListener('click', () => guard('importMsg', async () => {
     if (e.reason === 'subscriptionForbidden') throw new Error('That channel’s subscriptions are private. Use option A, B or C instead.');
     throw e;
   }
-  await importIds(subs, 'your public subscriptions');
+  await importIds(subs, 'your public subscriptions', { full: true });
 }));
 
 function loadScript(src) {
@@ -108,7 +125,7 @@ $('oauthBtn').addEventListener('click', () => guard('importMsg', async () => {
     client.requestAccessToken();
   });
   msg('importMsg', 'Signed in. Reading subscriptions…');
-  await importIds(await yt.fetchMySubscriptions(token), 'your account');
+  await importIds(await yt.fetchMySubscriptions(token), 'your account', { full: true });
 }));
 
 // ---- 3. Channels & sync ----
