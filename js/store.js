@@ -95,6 +95,9 @@ const DEFAULT_SETTINGS = {
   finishThreshold: 90,
   finishRemaining: 3,
   lastSync: 0,
+  // How the full subscription list was last imported, so "Sync all" can refresh it:
+  // { type: 'oauth' } or { type: 'public', channelId }.
+  subsSource: null,
 };
 
 export function getSettings() {

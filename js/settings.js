@@ -48,10 +48,10 @@ $('saveKey').addEventListener('click', () => guard('keyMsg', async () => {
 
 // `full` means `ids` is your complete subscription list, so channels missing from it
 // are ones you've unsubscribed from. Pasted channels (Option B) are never removed this way.
-async function importIds(ids, source, { full = false } = {}) {
+async function importIds(ids, source, { full = false, msgId = 'importMsg' } = {}) {
   needKey();
   if (!ids.length) throw new Error(`No channels found in ${source}.`);
-  msg('importMsg', `Looking up ${ids.length} channels…`);
+  msg(msgId, `Looking up ${ids.length} channels…`);
   const added = await yt.addChannels(ids, full ? {} : { manual: true });
   let removed = 0;
   if (full) {
@@ -67,9 +67,11 @@ async function importIds(ids, source, { full = false } = {}) {
       removed = stale.length;
     }
   }
-  msg('importMsg', `Found ${ids.length} channels in ${source}; ${added} new added`
-    + `${removed ? `, ${removed} unsubscribed removed` : ''}. Now click "Sync all channels now" below.`, 'ok');
+  const summary = `Found ${ids.length} channels in ${source}; ${added} new added`
+    + `${removed ? `, ${removed} unsubscribed removed` : ''}.`;
+  msg(msgId, msgId === 'importMsg' ? `${summary} Now click "Sync all channels now" below.` : summary, 'ok');
   await renderChannels();
+  return summary;
 }
 
 $('csvFile').addEventListener('change', (e) => guard('importMsg', async () => {
@@ -87,18 +89,21 @@ $('pasteBtn').addEventListener('click', () => guard('importMsg', async () => {
   else $('paste').value = '';
 }));
 
-$('publicBtn').addEventListener('click', () => guard('importMsg', async () => {
-  needKey();
-  const { ids } = await yt.resolveChannelRefs([$('myChannel').value]);
-  if (!ids.length) throw new Error('Enter a channel ID (UC…) or @handle.');
-  let subs;
+async function fetchPublicSubs(channelId) {
   try {
-    subs = await yt.fetchPublicSubscriptions(ids[0]);
+    return await yt.fetchPublicSubscriptions(channelId);
   } catch (e) {
     if (e.reason === 'subscriptionForbidden') throw new Error('That channel’s subscriptions are private. Use option A, B or C instead.');
     throw e;
   }
-  await importIds(subs, 'your public subscriptions', { full: true });
+}
+
+$('publicBtn').addEventListener('click', () => guard('importMsg', async () => {
+  needKey();
+  const { ids } = await yt.resolveChannelRefs([$('myChannel').value]);
+  if (!ids.length) throw new Error('Enter a channel ID (UC…) or @handle.');
+  await importIds(await fetchPublicSubs(ids[0]), 'your public subscriptions', { full: true });
+  store.saveSettings({ subsSource: { type: 'public', channelId: ids[0] } });
 }));
 
 function loadScript(src) {
@@ -109,24 +114,70 @@ function loadScript(src) {
   });
 }
 
+const GSI_SRC = 'https://accounts.google.com/gsi/client';
+const TOKEN_KEY = 'yt-subs-search-oauth';
+
+// A Google access token for reading your subscriptions. Reused for this browser
+// tab until it expires (about an hour); otherwise a Google sign-in popup opens.
+async function getToken(clientId) {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(TOKEN_KEY) || 'null');
+    if (saved && saved.clientId === clientId && saved.expires > Date.now() + 60000) return saved.token;
+  } catch { /* ignore */ }
+  await loadScript(GSI_SRC);
+  const resp = await new Promise((resolve, reject) => {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/youtube.readonly',
+      callback: (r) => (r.error ? reject(new Error(r.error_description || r.error)) : resolve(r)),
+      error_callback: (err) => reject(new Error(err.message || err.type || 'Sign-in cancelled')),
+    });
+    client.requestAccessToken();
+  });
+  try {
+    sessionStorage.setItem(TOKEN_KEY, JSON.stringify({ clientId, token: resp.access_token, expires: Date.now() + Number(resp.expires_in || 3600) * 1000 }));
+  } catch { /* ignore */ }
+  return resp.access_token;
+}
+
 $('oauthBtn').addEventListener('click', () => guard('importMsg', async () => {
   needKey();
   const clientId = $('clientId').value.trim();
   if (!clientId) throw new Error('Paste your OAuth client ID first.');
   store.saveSettings({ clientId });
-  await loadScript('https://accounts.google.com/gsi/client');
-  const token = await new Promise((resolve, reject) => {
-    const client = google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: 'https://www.googleapis.com/auth/youtube.readonly',
-      callback: (resp) => (resp.error ? reject(new Error(resp.error_description || resp.error)) : resolve(resp.access_token)),
-      error_callback: (err) => reject(new Error(err.message || err.type || 'Sign-in cancelled')),
-    });
-    client.requestAccessToken();
-  });
+  const token = await getToken(clientId);
   msg('importMsg', 'Signed in. Reading subscriptions…');
   await importIds(await yt.fetchMySubscriptions(token), 'your account', { full: true });
+  store.saveSettings({ subsSource: { type: 'oauth' } });
 }));
+
+// Load Google's sign-in script up front, so the popup from "Sync all" opens
+// straight from the click and isn't blocked.
+// Imports from before the source was remembered: a saved client ID means option C was used.
+function subsSourceOf(s) {
+  return s.subsSource || (s.clientId ? { type: 'oauth' } : null);
+}
+if (subsSourceOf(settings)?.type === 'oauth' && settings.clientId) loadScript(GSI_SRC).catch(() => {});
+if (settings.subsSource?.type === 'public') $('myChannel').value = settings.subsSource.channelId;
+
+// Before syncing videos, re-read your subscriptions the way you last imported them
+// (option C or D), adding new channels and offering to remove unsubscribed ones.
+// Returns a summary line, or '' when there's nothing to refresh from (e.g. Takeout).
+async function refreshSubscriptions() {
+  const s = store.getSettings();
+  const subsSource = subsSourceOf(s);
+  const { clientId } = s;
+  if (subsSource?.type === 'oauth' && clientId) {
+    msg('syncMsg', 'Checking your subscriptions (Google sign-in)…');
+    const token = await getToken(clientId);
+    return importIds(await yt.fetchMySubscriptions(token), 'your account', { full: true, msgId: 'syncMsg' });
+  }
+  if (subsSource?.type === 'public' && subsSource.channelId) {
+    msg('syncMsg', 'Checking your public subscriptions…');
+    return importIds(await fetchPublicSubs(subsSource.channelId), 'your public subscriptions', { full: true, msgId: 'syncMsg' });
+  }
+  return '';
+}
 
 // ---- 3. Channels & sync ----
 
@@ -172,20 +223,29 @@ function syncOne(channel) {
   });
 }
 
-async function syncAll() {
+async function syncAll({ refresh = false } = {}) {
   const btn = $('syncAllBtn');
   btn.disabled = true;
+  let subsNote = '';
+  if (refresh) {
+    try {
+      needKey();
+      subsNote = await refreshSubscriptions();
+    } catch (e) {
+      subsNote = `Couldn't check your subscriptions: ${e.message || e}`;
+    }
+  }
   await guard('syncMsg', async () => {
     const { total, errors } = await yt.syncAll(({ index, count, channel, total: soFar, done }) => {
       if (!done) msg('syncMsg', `Syncing ${index + 1} of ${count}: ${channel.title} (${soFar} new so far)…`);
     });
-    msg('syncMsg', `Done: ${total} new videos.${errors.length ? `\nProblems:\n${errors.join('\n')}` : ''}`, errors.length ? 'err' : 'ok');
+    msg('syncMsg', `${subsNote ? `${subsNote}\n` : ''}Done: ${total} new videos.${errors.length ? `\nProblems:\n${errors.join('\n')}` : ''}`, errors.length ? 'err' : 'ok');
   });
   btn.disabled = false;
   renderChannels();
 }
 
-$('syncAllBtn').addEventListener('click', syncAll);
+$('syncAllBtn').addEventListener('click', () => syncAll({ refresh: true }));
 $('refetchBtn').addEventListener('click', async () => {
   if (!confirm('Delete all stored videos and download them again? Watch progress is kept.')) return;
   await store.clear('videos');
