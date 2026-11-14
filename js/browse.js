@@ -1,5 +1,6 @@
 import * as store from './store.js';
 import { syncAll, syncChannel } from './youtube.js';
+import { groupsOf } from './groups.js';
 import { el, formatAge, formatCount, formatDuration, youtubeUrl, statusOf, percentOf, positionOf, fold } from './common.js';
 
 const PAGE_SIZE = 60;
@@ -10,6 +11,9 @@ const $ = (id) => document.getElementById(id);
 const statusBoxes = [...document.querySelectorAll('#status input')];
 // index.html?channel=UC... shows a single channel.
 const pageChannelId = new URLSearchParams(location.search).get('channel');
+// index.html?group=Technology shows every channel in one content group.
+const pageGroup = pageChannelId ? null : new URLSearchParams(location.search).get('group');
+let groupIds = null; // Set of channel IDs in pageGroup
 
 let videos = [];
 let channels = [];
@@ -59,7 +63,7 @@ function loadSavedFilters() {
 function applyFilters() {
   const f = readFilters();
   // The single-channel view shouldn't change which channel the main Browse page remembers.
-  const saved = pageChannelId ? { ...f, channel: loadSavedFilters().channel ?? '' } : f;
+  const saved = pageChannelId || pageGroup ? { ...f, channel: loadSavedFilters().channel ?? '' } : f;
   localStorage.setItem(FILTER_KEY, JSON.stringify(saved));
   const now = Date.now();
   const terms = fold(f.q).split(/\s+/).filter(Boolean);
@@ -71,6 +75,7 @@ function applyFilters() {
 
   filtered = videos.filter((v) => {
     if (f.channel && v.channelId !== f.channel) return false;
+    if (groupIds && !groupIds.has(v.channelId)) return false;
     if (f.hideShorts && v.isShort) return false;
     if (!f.showLive && v.kind === 'live') return false;
     if (!statuses.has(statusOf(progress.get(v.id), v))) return false;
@@ -112,7 +117,8 @@ function renderMore() {
   grid.append(...next.map(card));
   shown += next.length;
 
-  const scope = pageChannelId ? videos.filter((v) => v.channelId === pageChannelId) : videos;
+  const scope = pageChannelId ? videos.filter((v) => v.channelId === pageChannelId)
+    : groupIds ? videos.filter((v) => groupIds.has(v.channelId)) : videos;
   const total = scope.length;
   let started = 0;
   let finished = 0;
@@ -232,6 +238,7 @@ async function loadData() {
       .map((c) => el('option', { value: c.id }, `${c.title} (${counts.get(c.id) || 0})`)));
   select.value = channels.some((c) => c.id === current) ? current : '';
   if (pageChannelId) renderBanner(counts.get(pageChannelId) || 0);
+  if (pageGroup) renderGroupBanner(counts);
   applyFilters();
 }
 
@@ -261,6 +268,33 @@ function renderBanner(count) {
       el('a', { class: 'btn', href: `https://www.youtube.com/channel/${c.id}/videos`, target: '_blank', rel: 'noopener', title: 'Open on YouTube, e.g. to grab your progress with the bookmark from Settings' }, 'Channel on YouTube \u2197'),
       el('a', { class: 'btn', href: 'channels.html' }, '\u2190 All channels')),
   ].filter(Boolean));
+}
+
+// ---- Group view ----
+
+function renderGroupBanner(counts) {
+  const group = groupsOf(channels).find((g) => g.name === pageGroup);
+  groupIds = new Set(group ? group.channels.map((c) => c.id) : []);
+  const banner = $('channelBanner');
+  banner.hidden = false;
+  document.title = `${pageGroup} \u2013 Subscription Search`;
+  const videoCount = group ? group.channels.reduce((n, c) => n + (counts.get(c.id) || 0), 0) : 0;
+  banner.replaceChildren(
+    el('div', { class: 'grow' },
+      el('h1', {}, pageGroup),
+      el('div', { class: 'meta' }, group
+        ? `${group.channels.length} channel${group.channels.length === 1 ? '' : 's'} \u00b7 ${videoCount.toLocaleString()} videos`
+        : 'No channels in this group. Groups are updated each time you sync.')),
+    el('div', { class: 'actions' },
+      el('button', { class: 'btn', id: 'showAllBtn', disabled: true, title: 'Load every matching video instead of clicking Show more repeatedly', onclick: () => { showAll = true; renderMore(); } }, 'Show all videos'),
+      el('a', { class: 'btn', href: 'groups.html' }, '\u2190 All groups')));
+  const list = $('groupChannels');
+  list.hidden = !group;
+  if (group) {
+    list.replaceChildren(...group.channels.map((c) => el('a', { class: 'group-channel', href: `index.html?channel=${encodeURIComponent(c.id)}`, title: `${counts.get(c.id) || 0} videos` },
+      c.thumb ? el('img', { src: c.thumb, alt: '', loading: 'lazy' }) : el('span', { class: 'avatar' }),
+      c.title)));
+  }
 }
 
 async function runChannelSync(c) {
@@ -314,6 +348,16 @@ new ResizeObserver(() => {
 
 writeFilters(loadSavedFilters());
 updateSyncStatus();
+if (pageGroup) {
+  $('channelFilter').hidden = true;
+  // Banner and sort row pin separately so the channel list between them can scroll away.
+  $('resultsTop').classList.add('split');
+  const banner = $('channelBanner');
+  new ResizeObserver(() => {
+    document.documentElement.style.setProperty('--banner-h', `${banner.offsetHeight}px`);
+  }).observe(banner);
+  document.querySelectorAll('.topbar nav a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === 'groups.html'));
+}
 if (pageChannelId) {
   $('channelFilter').hidden = true;
   $('syncBtn').hidden = true;

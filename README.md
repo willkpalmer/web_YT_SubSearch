@@ -10,6 +10,9 @@ filtering that YouTube itself doesn't give you:
   watched, most progress, or least time remaining.
 - **Channels page:** an alphabetical, searchable list of your subscriptions. Pick one to sync just
   that channel and browse its videos with the same filters and sorting.
+- **Groups page:** channels are automatically grouped by content (Technology, Music, Gaming, Food & cooking…)
+  using the topics YouTube assigns them, with at most 20 groups. Groups are refreshed on every sync. Pick a group to
+  see its channels and all their videos together, with the usual filters and sorting.
 - **Progress tracking:** videos played in the app's built-in player remember where you stopped
   and resume from there. A video you've started counts as *finished* once you've watched 90% of it
   or, for videos longer than 10 minutes, there are less than 3 minutes left (both adjustable in Settings).

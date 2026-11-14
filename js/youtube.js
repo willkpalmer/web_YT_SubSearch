@@ -1,5 +1,6 @@
 // YouTube Data API v3 helpers and the subscription sync logic.
 import * as store from './store.js';
+import { assignGroups, topicName } from './groups.js';
 
 const API = 'https://www.googleapis.com/youtube/v3/';
 
@@ -50,7 +51,7 @@ function bestThumb(thumbs = {}) {
 export async function fetchChannels(ids) {
   const out = [];
   for (const group of chunk(ids, 50)) {
-    const data = await call('channels', { part: 'snippet,contentDetails', id: group.join(','), maxResults: 50 });
+    const data = await call('channels', { part: 'snippet,contentDetails,topicDetails', id: group.join(','), maxResults: 50 });
     for (const c of data.items || []) {
       out.push({
         id: c.id,
@@ -58,6 +59,7 @@ export async function fetchChannels(ids) {
         handle: c.snippet.customUrl || '',
         thumb: bestThumb(c.snippet.thumbnails),
         uploadsId: c.contentDetails?.relatedPlaylists?.uploads || 'UU' + c.id.slice(2),
+        topics: (c.topicDetails?.topicCategories || []).map(topicName),
       });
     }
   }
@@ -223,9 +225,30 @@ export async function syncAll(onProgress = () => {}) {
       errors.push(`${c.title}: ${e.message}`);
     }
   }
+  try {
+    await refreshGroups();
+  } catch (e) {
+    if (e.reason === 'quotaExceeded') throw e;
+    errors.push(`Grouping channels: ${e.message}`);
+  }
   store.saveSettings({ lastSync: Date.now() });
   onProgress({ index: channels.length, count: channels.length, total, done: true });
   return { total, errors };
+}
+
+// Re-read every channel's details and YouTube topics (1 quota unit per 50 channels)
+// and tag each with up to a few content groups. Runs at the end of every "sync all".
+export async function refreshGroups() {
+  const channels = await store.getAll('channels');
+  if (!channels.length) return;
+  const fresh = new Map((await fetchChannels(channels.map((c) => c.id))).map((c) => [c.id, c]));
+  const merged = channels.map((c) => {
+    const f = fresh.get(c.id);
+    // Channels YouTube no longer returns keep their old details.
+    return f ? { ...c, title: f.title, handle: f.handle, thumb: f.thumb || c.thumb, topics: f.topics } : c;
+  });
+  const groups = assignGroups(merged);
+  await store.putMany('channels', merged.map((c) => ({ ...c, groups: groups.get(c.id) })));
 }
 
 // `extra` is stored on each new channel, e.g. { manual: true } for pasted ones.

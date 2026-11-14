@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Groups – Subscription Search</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html"><span class="logo"></span>Subscription Search</a>
+    <nav>
+      <a href="index.html">Browse</a>
+      <a href="channels.html">Channels</a>
+      <a href="groups.html" class="active">Groups</a>
+      <a href="settings.html">Settings</a>
+    </nav>
+    <span class="spacer"></span>
+    <span class="sync-status" id="groupStatus"></span>
+    <button class="btn" id="regroupBtn" title="Re-read each channel's topics from YouTube and regroup (also happens on every sync)">Regroup now</button>
+  </header>
+
+  <main class="page groups-page">
+    <p class="meta" style="margin:0;color:var(--muted)">Channels are grouped by the topics YouTube gives them, and regrouped every time you sync. A channel can be in more than one group. Pick a group to see its channels and all their videos.</p>
+    <div class="group-cards" id="groups"></div>
+  </main>
+
+  <script type="module" src="js/groups-page.js"></script>
+</body>
+</html>
